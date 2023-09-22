@@ -1,0 +1,5 @@
+dotnet publish -c Release -r osx.11.0-x64 --self-contained true
+
+dotnet publish -c Release --runtime win10-x64 --self-contained true
+
+dotnet publish -c Release --runtime win-x64 --self-contained true
