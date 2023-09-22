@@ -1,0 +1,16 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "tolerations": [
+          {
+            "key": "dedicated",
+            "operator": "Equal",
+            "value": "transcode",
+            "effect": "NoSchedule"
+          }
+        ]
+      }
+    }
+  }
+}
