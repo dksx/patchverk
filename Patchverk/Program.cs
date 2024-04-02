@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using k8s;
 using k8s.Models;
+using Serilog;
+using Serilog.Events;
 
 namespace Patchverk;
 
@@ -21,6 +23,8 @@ internal static class Program
 
     internal static async Task Main(string[] args)
     {
+        InitializeLogger();
+
         RootCommand rootCommand = new RootCommand
         {
             Name = "Patchverk",
@@ -46,33 +50,42 @@ internal static class Program
         await rootCommand.InvokeAsync(args).ConfigureAwait(false);
     }
 
+    private static void InitializeLogger()
+    {
+        Log.Logger = new LoggerConfiguration()
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information)
+            .CreateLogger();
+    }
+
     private static async Task ExecuteInternal(string kubeconfig, string targetSystem, CancellationToken token)
     {
-        Kubernetes client = await InitClient(kubeconfig, token).ConfigureAwait(false);
-        Console.WriteLine("Version check..");
+        Kubernetes client;
+
+        Log.Logger.Information("Version check..");
         try
         {
+            client = await InitClient(kubeconfig, token).ConfigureAwait(false);
             await client.GetCodeAsync(token).ConfigureAwait(false);
         }
         catch (Exception exc)
         {
-            Console.WriteLine($"Error during version check, will not proceed - {exc}");
+            Log.Logger.Error(exc, "Error during version check, will not proceed");
             return;
         }
 
-        Console.WriteLine("Enumerating target systems..");
+        Log.Logger.Information("Enumerating target systems..");
         try
         {
             ISet<string> systems = EnumerateSystems();
             if (!systems.Contains(targetSystem))
             {
-                Console.WriteLine("No patches were detected for the provided system name, will not proceed");
+                Log.Logger.Error("No patches were detected for the provided system name, will not proceed");
                 return;
             }
         }
         catch (Exception exc)
         {
-            Console.WriteLine($"Error enumerating target systems, will not proceed - {exc}");
+            Log.Logger.Error(exc, "Error enumerating target systems, will not proceed");
             return;
         }
 
@@ -82,11 +95,11 @@ internal static class Program
 
     private static async Task ApplyPatches(Kubernetes client, CancellationToken token)
     {
-        Console.WriteLine("Applying patches..");
+        Log.Logger.Information("Applying patches..");
         foreach (var resource in Constants.supportedResourceTypes)
             await PatchResource(client, resource, _patchMap[resource], token).ConfigureAwait(false);
 
-        Console.WriteLine("Patches applied");
+        Log.Logger.Information("Patches applied");
     }
 
     private static async Task<Kubernetes> InitClient(string kubeConfigPath, CancellationToken token)
@@ -113,7 +126,7 @@ internal static class Program
             }
             catch (Exception exc)
             {
-                Console.WriteLine($"Error patching {type} {patch.Resource} - {exc}");
+                Log.Logger.Error(exc, "Error patching {type} {resource}", type, patch.Resource);
             }
         }
     }
@@ -142,7 +155,7 @@ internal static class Program
         {
             string directive = Regex.Replace(file, @"\\|\/", ".");
             string[] segments = directive.Split('.')[^3..];
-            if (!Constants.supportedResourceTypes.Contains(segments[0])) { Console.WriteLine($"{segments[0]} patching is not supported yet"); continue; }
+            if (!Constants.supportedResourceTypes.Contains(segments[0])) { Log.Logger.Warning("{type} patching is not supported yet", segments[0]); continue; }
             if (segments[^1] == "default") { continue; }
             string payload = await File.ReadAllTextAsync(file, token).ConfigureAwait(false);
 
